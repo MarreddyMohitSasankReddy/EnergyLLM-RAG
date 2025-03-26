@@ -1,0 +1,7 @@
+streamlit
+google-generativeai
+pinecone
+torch
+transformers
+numpy
+scikit-learn
