@@ -1,6 +1,11 @@
 # EnergyLLM-RAG
 
 A Retrieval-Augmented Generation (RAG) pipeline using MatSciBERT, Pinecone, and Gemini 2.0 Flash for battery materials research.
+## Demo
+
+Here is the demo: [EnergyLLM-RAG](https://energyllm-rag.streamlit.app/)
+
+
 
 ## Installation
 
