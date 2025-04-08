@@ -8,6 +8,20 @@ import torch
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
+# Monkey-patch for missing functions in transformers
+import transformers.modeling_utils as modeling_utils
+from contextlib import nullcontext
+
+if not hasattr(modeling_utils, "init_empty_weights"):
+    def init_empty_weights():
+        return nullcontext()
+    modeling_utils.init_empty_weights = init_empty_weights
+
+if not hasattr(modeling_utils, "find_tied_parameters"):
+    def find_tied_parameters(model):
+        return {}
+    modeling_utils.find_tied_parameters = find_tied_parameters
+
 # Set up API keys using Streamlit secrets
 GOOGLE_API_KEY = st.secrets["secrets"]["GOOGLE_API_KEY"]
 PINECONE_API_KEY = st.secrets["secrets"]["PINECONE_API_KEY"]
@@ -19,7 +33,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
 index = pc.Index("matscibert-rag-norm")
 
-# Load MatSciBERT model and tokenizer (removed local_files_only=True)
+# Load MatSciBERT model and tokenizer
 model_name = "m3rg-iitd/matscibert"
 tokenizer_mat = AutoTokenizer.from_pretrained(model_name)
 model_mat = AutoModel.from_pretrained(model_name).to("cpu")
@@ -39,7 +53,8 @@ def retrieve_relevant_docs(query, index, top_k=3):
 def check_hallucination(response, context_list):
     response_embedding = embed_query(response)
     max_similarity = max(
-        cosine_similarity([response_embedding], [embed_query(context)])[0][0] for context in context_list
+        cosine_similarity([response_embedding], [embed_query(context)])[0][0]
+        for context in context_list
     )
     return max_similarity >= 0.6  # Threshold for hallucination detection
 
@@ -55,7 +70,8 @@ def rag_reflection(query, index, top_k=3):
     input_text = (
         "You are an expert in battery materials. Answer the following query accurately:\n\n"
         f"Query: {query}\n\n"
-        "Relevant Context:\n" + "\n".join(context) + "\n\nProvide a concise and factual answer:\n"
+        "Relevant Context:\n" + "\n".join(context) +
+        "\n\nProvide a concise and factual answer:\n"
     )
     response = generate_response_with_gemini(input_text)
     return response if check_hallucination(response, context) else "⚠️ The response might contain hallucinations. Please verify the information."
