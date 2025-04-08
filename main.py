@@ -21,8 +21,8 @@ index = pc.Index("matscibert-rag-norm")
 
 # Load MatSciBERT model and tokenizer
 model_name = "m3rg-iitd/matscibert"
-tokenizer_mat = AutoTokenizer.from_pretrained(model_name)
-model_mat = AutoModel.from_pretrained(model_name).to("cpu")
+tokenizer_mat = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+model_mat = AutoModel.from_pretrained(model_name, local_files_only=True).to("cpu")
 
 # Function to embed a query using MatSciBERT
 def embed_query(query):
