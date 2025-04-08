@@ -7,39 +7,36 @@ from transformers import AutoTokenizer, AutoModel
 import torch
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from contextlib import nullcontext
 
 # Monkey-patch for missing functions in transformers
 import transformers.modeling_utils as modeling_utils
-from contextlib import nullcontext
-
 if not hasattr(modeling_utils, "init_empty_weights"):
-    def init_empty_weights():
-        return nullcontext()
-    modeling_utils.init_empty_weights = init_empty_weights
-
+    modeling_utils.init_empty_weights = lambda: nullcontext()
 if not hasattr(modeling_utils, "find_tied_parameters"):
-    def find_tied_parameters(model):
-        return {}
-    modeling_utils.find_tied_parameters = find_tied_parameters
+    modeling_utils.find_tied_parameters = lambda model: {}
 
-# Set up API keys using Streamlit secrets
+# Set up API keys
 GOOGLE_API_KEY = st.secrets["secrets"]["GOOGLE_API_KEY"]
 PINECONE_API_KEY = st.secrets["secrets"]["PINECONE_API_KEY"]
 PINECONE_ENV = st.secrets["secrets"]["PINECONE_ENV"]
+# Optional HF Hub token to avoid rate limits (add this to your secrets if available)
+HF_HUB_TOKEN = st.secrets["secrets"].get("HF_HUB_TOKEN", None)
 
 genai.configure(api_key=GOOGLE_API_KEY)
-
-# Initialize Pinecone client
 pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
 index = pc.Index("matscibert-rag-norm")
 
-# Load MatSciBERT model and tokenizer
 model_name = "m3rg-iitd/matscibert"
-tokenizer_mat = AutoTokenizer.from_pretrained(model_name)
-model_mat = AutoModel.from_pretrained(model_name).to("cpu")
+try:
+    tokenizer_mat = AutoTokenizer.from_pretrained(model_name, use_auth_token=HF_HUB_TOKEN)
+    model_mat = AutoModel.from_pretrained(model_name, use_auth_token=HF_HUB_TOKEN).to("cpu")
+except OSError as e:
+    st.error("Error loading model files. Check your internet connection or verify your HF_HUB_TOKEN.")
+    st.stop()
 
 def embed_query(query):
-    inputs = tokenizer_mat(query, return_tensors="pt", truncation=True, padding=True, max_length=512).to("cpu")
+    inputs = tokenizer_mat(query, return_tensors="pt", truncation=True, padding=True, max_length=512)
     with torch.no_grad():
         embeddings = model_mat(**inputs).last_hidden_state.mean(dim=1)  # Mean pooling
     return embeddings.squeeze().cpu().numpy()
@@ -53,10 +50,9 @@ def retrieve_relevant_docs(query, index, top_k=3):
 def check_hallucination(response, context_list):
     response_embedding = embed_query(response)
     max_similarity = max(
-        cosine_similarity([response_embedding], [embed_query(context)])[0][0]
-        for context in context_list
+        cosine_similarity([response_embedding], [embed_query(context)])[0][0] for context in context_list
     )
-    return max_similarity >= 0.6  # Threshold for hallucination detection
+    return max_similarity >= 0.6
 
 def generate_response_with_gemini(prompt):
     model = genai.GenerativeModel("gemini-1.5-flash")
